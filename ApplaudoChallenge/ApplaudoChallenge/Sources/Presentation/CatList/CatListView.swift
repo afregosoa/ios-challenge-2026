@@ -1,10 +1,3 @@
-//
-//  CatListView.swift
-//  NetworkLayer
-//
-//  Created by Alfredo Fregoso on 15/09/26.
-//
-
 import SwiftUI
 import NetworkLayer
 
@@ -16,9 +9,9 @@ struct CatListView: View {
             .navigationTitle("Cat Breeds")
             .searchable(text: $viewModel.searchText, prompt: "Search by name or origin")
             .background(AppTheme.Colors.background)
-            .task {
+            .onAppear {
                 if viewModel.breeds.isEmpty {
-                    await viewModel.loadBreeds()
+                    viewModel.loadBreeds()
                 }
             }
     }
@@ -36,7 +29,7 @@ struct CatListView: View {
                 title: "Something went wrong",
                 message: error,
                 buttonTitle: "Retry",
-                action: { Task { await viewModel.loadBreeds() } }
+                action: { viewModel.loadBreeds() }
             )
         } else if viewModel.filteredBreeds.isEmpty {
             EmptyStateView(
@@ -74,8 +67,8 @@ struct CatListView: View {
         .listRowInsets(EdgeInsets(top: AppTheme.Spacing.sm, leading: AppTheme.Spacing.md, bottom: AppTheme.Spacing.sm, trailing: AppTheme.Spacing.md))
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
-        .task {
-            await viewModel.loadMoreIfNeeded(currentItem: breed)
+        .onAppear {
+            viewModel.loadMoreIfNeeded(currentItem: breed)
         }
     }
 

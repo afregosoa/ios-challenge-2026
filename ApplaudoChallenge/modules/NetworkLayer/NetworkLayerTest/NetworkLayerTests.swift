@@ -3,6 +3,25 @@ import Foundation
 import Combine
 @testable import NetworkLayer
 
+// MARK: - Test Helper
+
+// Bridges an AnyPublisher to async/await for use in Swift Testing assertions.
+private func awaitFirst<T>(_ publisher: AnyPublisher<T, NetworkError>) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+        var cancellable: AnyCancellable?
+        cancellable = publisher.first()
+            .sink(
+                receiveCompletion: { completion in
+                    if case .failure(let error) = completion {
+                        continuation.resume(throwing: error)
+                    }
+                    _ = cancellable
+                },
+                receiveValue: { continuation.resume(returning: $0) }
+            )
+    }
+}
+
 // MARK: - Mock
 
 private struct MockNetworkingRequester: NetworkingRequesterType {
@@ -103,7 +122,7 @@ struct CatBreedServiceTests {
     @Test func returnsDecodedBreeds() async throws {
         let json = #"[{"id":"abys","name":"Abyssinian"}]"#.data(using: .utf8)!
         let service = CatBreedService(requester: MockNetworkingRequester(data: json))
-        let breeds = try await service.fetchBreeds(page: 0, limit: 15)
+        let breeds = try await awaitFirst(service.fetchBreeds(page: 0, limit: 15))
         #expect(breeds.count == 1)
         #expect(breeds.first?.id == "abys")
     }
@@ -111,7 +130,7 @@ struct CatBreedServiceTests {
     @Test func returnsEmptyArrayForEmptyResponse() async throws {
         let json = "[]".data(using: .utf8)!
         let service = CatBreedService(requester: MockNetworkingRequester(data: json))
-        let breeds = try await service.fetchBreeds(page: 0, limit: 15)
+        let breeds = try await awaitFirst(service.fetchBreeds(page: 0, limit: 15))
         #expect(breeds.isEmpty)
     }
 
@@ -120,7 +139,7 @@ struct CatBreedServiceTests {
             error: .unknown(underlying: URLError(.notConnectedToInternet))
         ))
         await #expect(throws: (any Error).self) {
-            try await service.fetchBreeds(page: 0, limit: 15)
+            try await awaitFirst(service.fetchBreeds(page: 0, limit: 15))
         }
     }
 
@@ -129,9 +148,7 @@ struct CatBreedServiceTests {
             error: .serverError(statusCode: 401, data: Data())
         ))
         await #expect(throws: (any Error).self) {
-            try await service.fetchBreeds(page: 0, limit: 15)
+            try await awaitFirst(service.fetchBreeds(page: 0, limit: 15))
         }
     }
 }
-
-

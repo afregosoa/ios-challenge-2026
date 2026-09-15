@@ -1,10 +1,4 @@
-//
-//  CatListViewModel.swift
-//  NetworkLayer
-//
-//  Created by Alfredo Fregoso on 15/09/26.
-//
-
+import Combine
 import Foundation
 import NetworkLayer
 
@@ -16,10 +10,11 @@ final class CatListViewModel {
     var errorMessage: String?
     var searchText = ""
 
-    private var currentPage = 0
-    private let pageSize = 15
-    private var hasMorePages = true
-    private var isFetchingPage = false
+    @ObservationIgnored private var currentPage = 0
+    @ObservationIgnored private let pageSize = 15
+    @ObservationIgnored private var hasMorePages = true
+    @ObservationIgnored private var isFetchingPage = false
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
 
     var filteredBreeds: [CatBreed] {
         guard !searchText.isEmpty else { return breeds }
@@ -35,24 +30,37 @@ final class CatListViewModel {
         self.service = service
     }
 
-    func loadBreeds() async {
+    func loadBreeds() {
         guard !isFetchingPage else { return }
         isFetchingPage = true
         isLoading = true
         errorMessage = nil
-        do {
-            let result = try await service.fetchBreeds(page: 0, limit: pageSize)
-            breeds = result
-            currentPage = 0
-            hasMorePages = result.count == pageSize
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isLoading = false
-        isFetchingPage = false
+
+        service.fetchBreeds(page: 0, limit: pageSize)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if case .failure(let error) = completion {
+                            self.errorMessage = error.localizedDescription
+                        }
+                        self.isLoading = false
+                        self.isFetchingPage = false
+                    }
+                },
+                receiveValue: { [weak self] result in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.breeds = result
+                        self.currentPage = 0
+                        self.hasMorePages = result.count == self.pageSize
+                    }
+                }
+            )
+            .store(in: &cancellables)
     }
 
-    func loadMoreIfNeeded(currentItem: CatBreed) async {
+    func loadMoreIfNeeded(currentItem: CatBreed) {
         guard searchText.isEmpty,
               !isFetchingPage,
               hasMorePages else { return }
@@ -61,22 +69,32 @@ final class CatListViewModel {
         guard let index = breeds.firstIndex(where: { $0.id == currentItem.id }),
               index >= threshold else { return }
 
-        await loadNextPage()
+        loadNextPage()
     }
 
-    private func loadNextPage() async {
+    private func loadNextPage() {
         isFetchingPage = true
         isLoadingMore = true
         let nextPage = currentPage + 1
-        do {
-            let result = try await service.fetchBreeds(page: nextPage, limit: pageSize)
-            breeds.append(contentsOf: result)
-            currentPage = nextPage
-            hasMorePages = result.count == pageSize
-        } catch {
-            // Existing breeds remain visible; next scroll attempt will retry.
-        }
-        isLoadingMore = false
-        isFetchingPage = false
+
+        service.fetchBreeds(page: nextPage, limit: pageSize)
+            .sink(
+                receiveCompletion: { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.isLoadingMore = false
+                        self.isFetchingPage = false
+                    }
+                },
+                receiveValue: { [weak self] result in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.breeds.append(contentsOf: result)
+                        self.currentPage = nextPage
+                        self.hasMorePages = result.count == self.pageSize
+                    }
+                }
+            )
+            .store(in: &cancellables)
     }
 }

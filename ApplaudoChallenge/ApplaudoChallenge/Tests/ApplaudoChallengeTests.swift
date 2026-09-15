@@ -1,4 +1,5 @@
 import Testing
+import Combine
 import Foundation
 import NetworkLayer
 @testable import ApplaudoChallenge
@@ -14,9 +15,14 @@ private struct MockCatBreedService: CatBreedServiceProtocol {
         self.error = error
     }
 
-    func fetchBreeds(page: Int, limit: Int) async throws -> [CatBreed] {
-        if let error { throw error }
-        return breeds
+    func fetchBreeds(page: Int, limit: Int) -> AnyPublisher<[CatBreed], NetworkError> {
+        if let error {
+            return Fail(error: NetworkError.unknown(underlying: error))
+                .eraseToAnyPublisher()
+        }
+        return Just(breeds)
+            .setFailureType(to: NetworkError.self)
+            .eraseToAnyPublisher()
     }
 }
 
@@ -27,24 +33,31 @@ private final class PagedMockService: CatBreedServiceProtocol {
 
     init(responses: [[CatBreed]]) { self.responses = responses }
 
-    func fetchBreeds(page: Int, limit: Int) async throws -> [CatBreed] {
+    func fetchBreeds(page: Int, limit: Int) -> AnyPublisher<[CatBreed], NetworkError> {
         defer { callIndex += 1 }
-        guard callIndex < responses.count else { return [] }
-        return responses[callIndex]
+        let result = callIndex < responses.count ? responses[callIndex] : []
+        return Just(result)
+            .setFailureType(to: NetworkError.self)
+            .eraseToAnyPublisher()
     }
 }
 
-// Succeeds on first call, throws on all subsequent calls.
+// Succeeds on first call, fails on all subsequent calls.
 private final class FailAfterFirstService: CatBreedServiceProtocol {
     private var callIndex = 0
     private let firstPage: [CatBreed]
 
     init(firstPage: [CatBreed]) { self.firstPage = firstPage }
 
-    func fetchBreeds(page: Int, limit: Int) async throws -> [CatBreed] {
+    func fetchBreeds(page: Int, limit: Int) -> AnyPublisher<[CatBreed], NetworkError> {
         defer { callIndex += 1 }
-        if callIndex == 0 { return firstPage }
-        throw URLError(.notConnectedToInternet)
+        if callIndex == 0 {
+            return Just(firstPage)
+                .setFailureType(to: NetworkError.self)
+                .eraseToAnyPublisher()
+        }
+        return Fail(error: NetworkError.unknown(underlying: URLError(.notConnectedToInternet)))
+            .eraseToAnyPublisher()
     }
 }
 
@@ -200,27 +213,31 @@ struct AddCatViewModelNavigationTests {
 
 // MARK: - CatListViewModel
 
+@MainActor
 @Suite("CatListViewModel")
 struct CatListViewModelTests {
 
     @Test func loadBreedsSetsBreeds() async {
         let breeds = [CatBreed(id: "abys", name: "Abyssinian")]
         let vm = CatListViewModel(service: MockCatBreedService(breeds: breeds))
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         #expect(vm.breeds.count == 1)
         #expect(vm.breeds.first?.name == "Abyssinian")
     }
 
     @Test func loadBreedsSetsErrorOnFailure() async {
         let vm = CatListViewModel(service: MockCatBreedService(error: URLError(.notConnectedToInternet)))
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         #expect(vm.errorMessage != nil)
         #expect(vm.breeds.isEmpty)
     }
 
     @Test func isLoadingFalseAfterLoad() async {
         let vm = CatListViewModel(service: MockCatBreedService())
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         #expect(vm.isLoading == false)
     }
 
@@ -230,7 +247,8 @@ struct CatListViewModelTests {
             CatBreed(id: "pers", name: "Persian", origin: "Iran")
         ]
         let vm = CatListViewModel(service: MockCatBreedService(breeds: breeds))
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         vm.searchText = "Persian"
         #expect(vm.filteredBreeds.count == 1)
         #expect(vm.filteredBreeds.first?.name == "Persian")
@@ -242,7 +260,8 @@ struct CatListViewModelTests {
             CatBreed(id: "pers", name: "Persian", origin: "Iran")
         ]
         let vm = CatListViewModel(service: MockCatBreedService(breeds: breeds))
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         vm.searchText = "Egypt"
         #expect(vm.filteredBreeds.count == 1)
         #expect(vm.filteredBreeds.first?.id == "abys")
@@ -254,7 +273,8 @@ struct CatListViewModelTests {
             CatBreed(id: "pers", name: "Persian")
         ]
         let vm = CatListViewModel(service: MockCatBreedService(breeds: breeds))
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         vm.searchText = ""
         #expect(vm.filteredBreeds.count == 2)
     }
@@ -378,6 +398,7 @@ struct AddCatViewModelMultiStepTests {
 
 // MARK: - CatListViewModel: Pagination
 
+@MainActor
 @Suite("CatListViewModel — Pagination")
 struct CatListViewModelPaginationTests {
     private let pageSize = 15
@@ -389,11 +410,13 @@ struct CatListViewModelPaginationTests {
     @Test func partialPagePreventsLoadingMore() async {
         let partial = makeBreeds(count: 5)
         let vm = CatListViewModel(service: MockCatBreedService(breeds: partial))
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         #expect(vm.breeds.count == 5)
 
         let last = vm.breeds.last!
-        await vm.loadMoreIfNeeded(currentItem: last)
+        vm.loadMoreIfNeeded(currentItem: last)
+        await Task.yield()
         #expect(vm.breeds.count == 5)
     }
 
@@ -402,11 +425,13 @@ struct CatListViewModelPaginationTests {
         let secondPage = makeBreeds(count: 3, prefix: "p2-")
         let service = PagedMockService(responses: [firstPage, secondPage])
         let vm = CatListViewModel(service: service)
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         #expect(vm.breeds.count == pageSize)
 
         let last = vm.breeds.last!
-        await vm.loadMoreIfNeeded(currentItem: last)
+        vm.loadMoreIfNeeded(currentItem: last)
+        await Task.yield()
         #expect(vm.breeds.count == pageSize + 3)
     }
 
@@ -415,11 +440,13 @@ struct CatListViewModelPaginationTests {
         let secondPage = makeBreeds(count: 3, prefix: "p2-")
         let service = PagedMockService(responses: [firstPage, secondPage])
         let vm = CatListViewModel(service: service)
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
 
         vm.searchText = "Cat"
         let last = vm.breeds.last!
-        await vm.loadMoreIfNeeded(currentItem: last)
+        vm.loadMoreIfNeeded(currentItem: last)
+        await Task.yield()
         #expect(vm.breeds.count == pageSize)
     }
 
@@ -427,11 +454,13 @@ struct CatListViewModelPaginationTests {
         let firstPage = makeBreeds(count: pageSize)
         let service = FailAfterFirstService(firstPage: firstPage)
         let vm = CatListViewModel(service: service)
-        await vm.loadBreeds()
+        vm.loadBreeds()
+        await Task.yield()
         #expect(vm.breeds.count == pageSize)
 
         let last = vm.breeds.last!
-        await vm.loadMoreIfNeeded(currentItem: last)
+        vm.loadMoreIfNeeded(currentItem: last)
+        await Task.yield()
         #expect(vm.breeds.count == pageSize)
         #expect(vm.isLoadingMore == false)
     }

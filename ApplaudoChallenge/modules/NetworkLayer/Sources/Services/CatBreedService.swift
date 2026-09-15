@@ -1,17 +1,11 @@
-//
-//  CatBreedService.swift
-//  NetworkLayer
-//
-//  Created by Alfredo Fregoso on 15/09/26.
-//
-
+import Combine
 import Foundation
 import Moya
 
 // MARK: - Protocol
 
 public protocol CatBreedServiceProtocol {
-    func fetchBreeds(page: Int, limit: Int) async throws -> [CatBreed]
+    func fetchBreeds(page: Int, limit: Int) -> AnyPublisher<[CatBreed], NetworkError>
 }
 
 // MARK: - Implementation
@@ -19,7 +13,6 @@ public protocol CatBreedServiceProtocol {
 public struct CatBreedService: CatBreedServiceProtocol {
     private let requester: NetworkingRequesterType
 
-    // Public init uses internal types only inside the module body — no public parameter exposure.
     public init() {
         self.requester = NetworkingRequester(provider: .networkingProvider())
     }
@@ -29,7 +22,7 @@ public struct CatBreedService: CatBreedServiceProtocol {
         self.requester = requester
     }
 
-    public func fetchBreeds(page: Int, limit: Int) async throws -> [CatBreed] {
-        try await requester.execute(request: BreedsTarget.getBreeds(page: page, limit: limit))
+    public func fetchBreeds(page: Int, limit: Int) -> AnyPublisher<[CatBreed], NetworkError> {
+        requester.execute(request: BreedsTarget.getBreeds(page: page, limit: limit))
     }
 }
