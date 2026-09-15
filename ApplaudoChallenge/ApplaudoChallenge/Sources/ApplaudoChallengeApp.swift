@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 @main
 struct ApplaudoChallengeApp: App {
@@ -6,5 +7,6 @@ struct ApplaudoChallengeApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: SavedCat.self)
     }
 }

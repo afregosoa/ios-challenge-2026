@@ -6,27 +6,19 @@ public struct ContentView: View {
     public var body: some View {
         TabView {
             // MARK: - Tab 1: Cat List
-            // TODO: Replace placeholder with your CatListView
             NavigationStack {
-                Text("Cat List")
-                    .font(AppTheme.Fonts.title)
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .navigationTitle("Cats")
+                CatListView()
             }
             .tabItem {
                 Label("Cats", systemImage: "cat")
             }
 
-            // MARK: - Tab 2: Add Cat
-            // TODO: Replace placeholder with your AddCatStepperView
+            // MARK: - Tab 2: My Collection
             NavigationStack {
-                Text("Add New Cat")
-                    .font(AppTheme.Fonts.title)
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                    .navigationTitle("Add Cat")
+                MyCatsTabView()
             }
             .tabItem {
-                Label("Add Cat", systemImage: "plus.circle")
+                Label("My Cats", systemImage: "heart")
             }
         }
         .tint(AppTheme.Colors.primary)
@@ -36,3 +28,4 @@ public struct ContentView: View {
 #Preview {
     ContentView()
 }
+
