@@ -33,9 +33,10 @@ extension NetworkingTargetType {
     // MARK: - Request Headers
     // Common headers sent with every request. Add or override additional headers in your target as required.
     var requestHeaders: [String: String]? {
-        [
+        let apiKey = Bundle.main.object(forInfoDictionaryKey: "CAT_API_KEY") as? String ?? ""
+        return [
             "Content-Type": "application/json",
-            "x-api-key": "YOUR-API-KEY" // TODO: Replace with your actual API key.
+            "x-api-key": apiKey
         ]
     }
 

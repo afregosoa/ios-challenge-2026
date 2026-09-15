@@ -14,6 +14,7 @@ let project = Project(
                         "UIColorName": "",
                         "UIImageName": "",
                     ],
+                    "CAT_API_KEY": "$(CAT_API_KEY)",
                 ]
             ),
             buildableFolders: [
@@ -22,7 +23,11 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "NetworkLayer"),
-            ]
+            ],
+            settings: .settings(configurations: [
+                .debug(name: "Debug", xcconfig: "Config/Secrets.xcconfig"),
+                .release(name: "Release", xcconfig: "Config/Secrets.xcconfig"),
+            ])
         ),
         .target(
             name: "ApplaudoChallengeTests",
